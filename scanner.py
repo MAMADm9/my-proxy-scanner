@@ -1,22 +1,24 @@
 import asyncio
 import socket
-from urllib.parse import urlparse, parse_qs
+import random
+
+# تنظیمات اصلی
+TOTAL_PROXIES = 1000000  # تعداد پروکسی که می‌خواهی تولید و تست شود
+CONCURRENT_TASKS = 500 # تعداد تست‌های همزمان (سرعت اسکن)
+SERVER = 'panel.nirvana-smoke.com'
+PORT = 8443
+
+def generate_proxy():
+    # تولید یوزرنیم تصادفی شبیه به مدل قبلی شما
+    hex_chars = '0123456789abcdef'
+    hex_str = ''.join(random.choice(hex_chars) for _ in range(18))
+    user = f"Azir_{hex_str}"
+    return f"https://t.me/socks?server={SERVER}&port={PORT}&user={user}&pass={user}"
 
 async def check_proxy(proxy_url):
     try:
-        # پاکسازی لینک برای استخراج آدرس
-        clean_url = proxy_url.strip().replace('tg://', 'http://').replace('https://', 'http://')
-        parsed = urlparse(clean_url)
-        query = parse_qs(parsed.query)
-        
-        server = query.get('server', [None])[0]
-        port_str = query.get('port', ['8443'])[0]
-        port = int(port_str)
-
-        if not server: return None
-
-        # تست اتصال TCP (پینگ واقعی)
-        conn = asyncio.open_connection(server, port)
+        # تست اتصال مستقیم به سرور و پورت
+        conn = asyncio.open_connection(SERVER, PORT)
         reader, writer = await asyncio.wait_for(conn, timeout=5)
         writer.close()
         await writer.wait_closed()
@@ -25,26 +27,27 @@ async def check_proxy(proxy_url):
         return None
 
 async def main():
-    try:
-        with open('proxies.txt', 'r') as f:
-            urls = [line.strip() for line in f if line.strip()]
-    except FileNotFoundError:
-        print("فایل proxies.txt پیدا نشد!")
-        return
+    print(f"Generating and scanning {TOTAL_PROXIES} proxies...")
+    
+    alive_proxies = []
+    # تست کردن در دسته‌های ۵۰۰ تایی برای فشار نیامدن به شبکه
+    for i in range(0, TOTAL_PROXIES, CONCURRENT_TASKS):
+        batch = [generate_proxy() for _ in range(CONCURRENT_TASKS)]
+        tasks = [check_proxy(url) for url in batch]
+        results = await asyncio.gather(*tasks)
+        
+        # جدا کردن زنده‌ها
+        found = [res for res in results if res]
+        alive_proxies.extend(found)
+        print(f"Processed {i + CONCURRENT_TASKS}... Found so far: {len(alive_proxies)}")
 
-    print(f"Starting scan for {len(urls)} proxies...")
-    
-    # اجرای اسکن به صورت موازی (Parallel)
-    tasks = [check_proxy(url) for url in urls]
-    results = await asyncio.gather(*tasks)
-    
-    alive_proxies = [res for res in results if res]
-    
+    # ذخیره نتایج
     with open('alive.txt', 'w') as f:
         for proxy in alive_proxies:
             f.write(proxy + '\n')
     
-    print(f"Done! Found {len(alive_proxies)} alive proxies.")
+    print(f"Final: Found {len(alive_proxies)} alive proxies.")
 
 if __name__ == "__main__":
     asyncio.run(main())
+    
