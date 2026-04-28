@@ -1,7 +1,7 @@
-name: Proxy Scanner
-on: [push]
+name: Auto Proxy Gen & Scan
+on: [push, workflow_dispatch]
 jobs:
-  build:
+  scan_job:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
